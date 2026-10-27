@@ -108,7 +108,6 @@ Resources:
             - '*'
           AllowMethods:
             - POST
-            - OPTIONS
           AllowHeaders:
             - content-type
           MaxAge: 3600
@@ -150,7 +149,6 @@ Resources:
             - '*'
           AllowMethods:
             - GET
-            - OPTIONS
           AllowHeaders:
             - content-type
           MaxAge: 3600
@@ -193,7 +191,6 @@ Resources:
           AllowMethods:
             - POST
             - DELETE
-            - OPTIONS
           AllowHeaders:
             - content-type
           MaxAge: 3600
@@ -336,15 +333,15 @@ Resources:
 Outputs:
   CreateUploadFunctionUrl:
     Description: Lambda Function URL for createUpload
-    Value: !GetAtt CreateUploadFunctionUrl.FunctionUrl
+    Value: !GetAtt CreateUploadFunction.FunctionUrl
 
   GetFileFunctionUrl:
     Description: Lambda Function URL for getFile
-    Value: !GetAtt GetFileFunctionUrl.FunctionUrl
+    Value: !GetAtt GetFileFunction.FunctionUrl
 
   DeleteFileFunctionUrl:
     Description: Lambda Function URL for deleteFile
-    Value: !GetAtt DeleteFileFunctionUrl.FunctionUrl
+    Value: !GetAtt DeleteFileFunction.FunctionUrl
 
   StorageBucketName:
     Description: Private S3 Bucket for file storage
