@@ -1,0 +1,363 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  DropBox-lite: Serverless temporary file sharing system.
+  Next.js Static Export, Lambda Function URLs, S3, DynamoDB, CloudFront with OAC.
+
+Parameters:
+  FilesTableName:
+    Type: String
+    Default: Files
+    Description: DynamoDB table name for storing file metadata and TTL.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+    Timeout: 15
+    MemorySize: 256
+    ReservedConcurrentExecutions: 10
+    Environment:
+      Variables:
+        FILES_TABLE: !Ref FilesTable
+        STORAGE_BUCKET: !Ref StorageBucket
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+
+Resources:
+  # =========================================================================
+  # DynamoDB Table
+  # =========================================================================
+  FilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref FilesTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: fileId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: fileId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+
+  # =========================================================================
+  # S3 Storage Bucket (Private, SSE, CORS, Lifecycle Rule)
+  # =========================================================================
+  StorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - POST
+              - PUT
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            ExposedHeaders:
+              - ETag
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDeleteExpiredFilesSafetyNet
+            Status: Enabled
+            ExpirationInDays: 1
+
+  # =========================================================================
+  # Lambda 1: createUpload
+  # =========================================================================
+  CreateUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Validates file metadata, generates S3 presigned POST & delete token, writes to DynamoDB.
+      CodeUri: backend/createUpload/
+      Handler: index.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt FilesTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${StorageBucket.Arn}/*'
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - POST
+            - OPTIONS
+          AllowHeaders:
+            - content-type
+          MaxAge: 3600
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'node20'
+        Sourcemap: false
+        EntryPoints:
+          - index.mjs
+        External:
+          - '@aws-sdk/*'
+
+  # =========================================================================
+  # Lambda 2: getFile
+  # =========================================================================
+  GetFileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Validates TTL, increments downloads atomically, returns presigned GET URL (60s).
+      CodeUri: backend/getFile/
+      Handler: index.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt FilesTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub '${StorageBucket.Arn}/*'
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - GET
+            - OPTIONS
+          AllowHeaders:
+            - content-type
+          MaxAge: 3600
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'node20'
+        Sourcemap: false
+        EntryPoints:
+          - index.mjs
+        External:
+          - '@aws-sdk/*'
+
+  # =========================================================================
+  # Lambda 3: deleteFile
+  # =========================================================================
+  DeleteFileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Validates deleteToken hash and deletes file from S3 and DynamoDB.
+      CodeUri: backend/deleteFile/
+      Handler: index.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:DeleteItem
+              Resource: !GetAtt FilesTable.Arn
+            - Effect: Allow
+              Action:
+                - s3:DeleteObject
+              Resource: !Sub '${StorageBucket.Arn}/*'
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'
+          AllowMethods:
+            - POST
+            - DELETE
+            - OPTIONS
+          AllowHeaders:
+            - content-type
+          MaxAge: 3600
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: 'node20'
+        Sourcemap: false
+        EntryPoints:
+          - index.mjs
+        External:
+          - '@aws-sdk/*'
+
+  # =========================================================================
+  # S3 Bucket for Next.js Static Frontend Hosting
+  # =========================================================================
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+  # =========================================================================
+  # CloudFront Origin Access Control (OAC)
+  # =========================================================================
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-FrontendOAC'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # =========================================================================
+  # Frontend S3 Bucket Policy (Allow CloudFront OAC only)
+  # =========================================================================
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  # =========================================================================
+  # CloudFront Distribution (HTTPS, Gzip/Brotli, Caching Rules)
+  # =========================================================================
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: 'CloudFront CDN for DropBox-lite static frontend'
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        Origins:
+          - Id: S3FrontendOrigin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: S3FrontendOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          # Managed-CachingOptimized (ID: 658327ea-f89d-4fab-a63d-7e88639e58f6)
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          # Long cache for immutable static Next.js assets
+          - PathPattern: '_next/static/*'
+            TargetOriginId: S3FrontendOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            AllowedMethods:
+              - GET
+              - HEAD
+            CachedMethods:
+              - GET
+              - HEAD
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          # No-cache for HTML pages so user always receives latest frontend releases
+          - PathPattern: '*.html'
+            TargetOriginId: S3FrontendOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            AllowedMethods:
+              - GET
+              - HEAD
+            CachedMethods:
+              - GET
+              - HEAD
+            # Managed-CachingDisabled (ID: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad)
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          - PathPattern: 'f/*'
+            TargetOriginId: S3FrontendOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            AllowedMethods:
+              - GET
+              - HEAD
+            CachedMethods:
+              - GET
+              - HEAD
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+
+Outputs:
+  CreateUploadFunctionUrl:
+    Description: Lambda Function URL for createUpload
+    Value: !GetAtt CreateUploadFunctionUrl.FunctionUrl
+
+  GetFileFunctionUrl:
+    Description: Lambda Function URL for getFile
+    Value: !GetAtt GetFileFunctionUrl.FunctionUrl
+
+  DeleteFileFunctionUrl:
+    Description: Lambda Function URL for deleteFile
+    Value: !GetAtt DeleteFileFunctionUrl.FunctionUrl
+
+  StorageBucketName:
+    Description: Private S3 Bucket for file storage
+    Value: !Ref StorageBucket
+
+  FrontendBucketName:
+    Description: Private S3 Bucket for Next.js frontend export
+    Value: !Ref FrontendBucket
+
+  CloudFrontDistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref CloudFrontDistribution
+
+  CloudFrontDomainName:
+    Description: CloudFront Distribution Domain Name (HTTPS)
+    Value: !GetAtt CloudFrontDistribution.DomainName

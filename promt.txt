@@ -1,0 +1,67 @@
+Build "DropBox-lite", a temporary file sharing web app (like a mini WeTransfer).
+I'm on Windows 11, so all scripts must work in PowerShell.
+
+HARD CONSTRAINTS
+- NO EC2, ECS, App Runner, Amplify, Cognito, or any always-on server.
+- Frontend: Next.js (App Router) with output: 'export' (static export), Tailwind CSS,
+  images: { unoptimized: true }. NO Next.js API routes, NO SSR, NO server actions.
+- Backend: AWS Lambda (Node.js 20, arm64) exposed via Lambda Function URLs,
+  DynamoDB (on-demand), S3 (private bucket). Region: ap-south-1.
+- Frontend hosted on a private S3 bucket behind CloudFront (Origin Access Control),
+  gzip/brotli enabled, long cache on /_next/static/*, no-cache on HTML.
+- Infrastructure as code in one AWS SAM template.yaml (or CloudFormation),
+  deployable with CLI commands only. Bundle Lambdas with esbuild; use the AWS SDK v3
+  already in the Lambda runtime (mark it external).
+
+FEATURES
+1. Upload: user picks or drag-drops a file (max 50 MB), chooses expiry (1 hour, 6 hours, 24 hours),
+   sees a progress bar, and gets a share link plus a copy button.
+2. Share page /f/?id=XXXX (query param, since static export has no dynamic routes at runtime):
+   shows file name, size, type, time remaining (live countdown), and a Download button.
+3. Expired or missing files show a clean "This link has expired" page.
+4. Delete: the uploader gets a secret deleteToken and can delete the file early.
+5. Download counter shown on the share page (DynamoDB atomic ADD).
+6. Responsive, mobile-first, fast, with loading and error states.
+
+BACKEND DESIGN (follow exactly)
+- DynamoDB table "Files": PK fileId (String). Attributes: fileName, size, contentType,
+  s3Key, expiresAt (epoch SECONDS, enabled as the TTL attribute), deleteToken (hashed with SHA-256),
+  downloads (Number), createdAt.
+- fileId: 12+ random URL-safe chars from crypto.randomBytes (unguessable). Never sequential.
+- Lambda createUpload: validate name, size <= 50MB and expiry choice; sanitize the file name;
+  write the DynamoDB item; return a presigned POST (@aws-sdk/s3-presigned-post)
+  with a content-length-range condition so S3 itself enforces the size limit;
+  return { fileId, upload: {url, fields}, deleteToken }.
+- Lambda getFile: look up by fileId; IMPORTANT: DynamoDB TTL deletes lazily (up to ~48h late),
+  so ALSO check expiresAt < now in code and return 410 Gone if expired.
+  Return metadata plus a presigned GET URL valid 60 seconds, with
+  ResponseContentDisposition set to attachment; filename="...". Increment downloads atomically.
+- Lambda deleteFile: requires fileId + deleteToken (compare hashes), deletes the S3 object and the DynamoDB item.
+- S3 bucket: all public access blocked, SSE enabled, CORS allowing POST/GET from any origin
+  (we lock it to the CloudFront domain later), lifecycle rule deleting objects after 1 day as a safety net.
+- Function URL CORS: allow origin *, methods GET/POST/DELETE, headers content-type.
+- Least-privilege IAM per Lambda (only the DynamoDB and S3 actions it needs).
+- Set reserved concurrency (e.g. 10) on Lambdas to cap abuse and cost.
+- Block uploads of .exe, .bat, .cmd, .scr, .js, .vbs, .ps1 extensions.
+
+FRONTEND NOTES
+- API base URLs via NEXT_PUBLIC_API_URL (and per-function URLs if needed) at build time.
+- Upload flow: call createUpload, then POST the file directly to S3 with XMLHttpRequest
+  (for progress events), using the returned fields (file must be the LAST form field).
+- Keep the bundle tiny: no UI libraries, no moment.js, lazy-load anything heavy.
+
+DELIVERABLES
+- /frontend, /backend (one folder per Lambda), template.yaml
+- deploy.ps1: sam build, sam deploy, read stack outputs, build the frontend with
+  the API URL, aws s3 sync, CloudFront invalidation, print the final URL.
+- README.md: architecture diagram (ASCII or Mermaid), live link placeholder, setup and deploy steps,
+  "Design decisions" (TTL lag handling, presigned POST size enforcement, unguessable IDs,
+  private bucket), "Security notes", "Performance" (Lighthouse score placeholder),
+  and "Next steps" (Cognito auth, virus scanning, password-protected links).
+- .gitignore excluding node_modules, .next, out, .aws-sam, .env*, and any credentials.
+
+Work in stages and stop after each so I can test:
+1. Backend + template.yaml, with curl/PowerShell test commands for each Lambda.
+2. Frontend against the deployed API.
+3. deploy.ps1 and CloudFront hosting.
+4. README.
