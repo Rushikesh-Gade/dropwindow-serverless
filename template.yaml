@@ -29,7 +29,6 @@ Globals:
       - arm64
     Timeout: 15
     MemorySize: 256
-    ReservedConcurrentExecutions: 10
     Environment:
       Variables:
         FILES_TABLE: !Ref FilesTable
