@@ -18,6 +18,7 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+$env:SAM_CLI_TELEMETRY = "0"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  DropBox-lite Deployment Automation (PowerShell)" -ForegroundColor Cyan
@@ -49,8 +50,8 @@ if (-not $samAvailable) {
     Write-Warning "'sam' CLI not found in PATH. Checking if CloudFormation package/deploy should be used..."
 }
 
-# 2. Build Backend with SAM (or esbuild fallback)
-Write-Host "`n[2/6] Building backend infrastructure..." -ForegroundColor Yellow
+# 2. Build Backend with SAM
+Write-Host "`n[2/6] Building backend infrastructure with SAM and esbuild..." -ForegroundColor Yellow
 if ($samAvailable) {
     sam build --template template.yaml
     if ($LASTEXITCODE -ne 0) {
@@ -69,6 +70,7 @@ if ($samAvailable) {
         --resolve-s3 `
         --capabilities CAPABILITY_IAM `
         --region $Region `
+        --no-confirm-changeset `
         --no-fail-on-empty-changeset
 } else {
     aws cloudformation deploy `
