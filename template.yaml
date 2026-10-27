@@ -2,13 +2,25 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   DropBox-lite: Serverless temporary file sharing system.
-  Next.js Static Export, Lambda Function URLs, S3, DynamoDB, CloudFront with OAC.
+  Next.js Static Export, Lambda Function URLs, S3, DynamoDB, CloudFront with OAC (optional).
 
 Parameters:
   FilesTableName:
     Type: String
     Default: Files
     Description: DynamoDB table name for storing file metadata and TTL.
+
+  EnableCloudFront:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Set to 'true' if your AWS account has verified CloudFront creation. Set to 'false' to host frontend via direct S3 Static Website.
+
+Conditions:
+  IsCloudFrontEnabled: !Equals [!Ref EnableCloudFront, 'true']
+  IsCloudFrontDisabled: !Equals [!Ref EnableCloudFront, 'false']
 
 Globals:
   Function:
@@ -216,16 +228,37 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        IgnorePublicAcls: true
-        BlockPublicPolicy: true
-        RestrictPublicBuckets: true
+        BlockPublicAcls: !If [IsCloudFrontEnabled, true, false]
+        IgnorePublicAcls: !If [IsCloudFrontEnabled, true, false]
+        BlockPublicPolicy: !If [IsCloudFrontEnabled, true, false]
+        RestrictPublicBuckets: !If [IsCloudFrontEnabled, true, false]
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
 
   # =========================================================================
-  # CloudFront Origin Access Control (OAC)
+  # Frontend Bucket Policy for S3 Direct Website Hosting (when CloudFront is disabled)
+  # =========================================================================
+  FrontendBucketPolicyPublic:
+    Type: AWS::S3::BucketPolicy
+    Condition: IsCloudFrontDisabled
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadForWebsiteHosting
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+
+  # =========================================================================
+  # CloudFront Origin Access Control (OAC) (when CloudFront is enabled)
   # =========================================================================
   CloudFrontOAC:
     Type: AWS::CloudFront::OriginAccessControl
+    Condition: IsCloudFrontEnabled
     Properties:
       OriginAccessControlConfig:
         Name: !Sub '${AWS::StackName}-FrontendOAC'
@@ -234,10 +267,11 @@ Resources:
         SigningProtocol: sigv4
 
   # =========================================================================
-  # Frontend S3 Bucket Policy (Allow CloudFront OAC only)
+  # Frontend S3 Bucket Policy (Allow CloudFront OAC only, when CloudFront is enabled)
   # =========================================================================
-  FrontendBucketPolicy:
+  FrontendBucketPolicyCloudFront:
     Type: AWS::S3::BucketPolicy
+    Condition: IsCloudFrontEnabled
     Properties:
       Bucket: !Ref FrontendBucket
       PolicyDocument:
@@ -254,10 +288,11 @@ Resources:
                 AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
 
   # =========================================================================
-  # CloudFront Distribution (HTTPS, Gzip/Brotli, Caching Rules)
+  # CloudFront Distribution (when CloudFront is enabled)
   # =========================================================================
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
+    Condition: IsCloudFrontEnabled
     Properties:
       DistributionConfig:
         Enabled: true
@@ -281,10 +316,8 @@ Resources:
             - GET
             - HEAD
             - OPTIONS
-          # Managed-CachingOptimized (ID: 658327ea-f89d-4fab-a63d-7e88639e58f6)
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
         CacheBehaviors:
-          # Long cache for immutable static Next.js assets
           - PathPattern: '_next/static/*'
             TargetOriginId: S3FrontendOrigin
             ViewerProtocolPolicy: redirect-to-https
@@ -296,7 +329,6 @@ Resources:
               - GET
               - HEAD
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-          # No-cache for HTML pages so user always receives latest frontend releases
           - PathPattern: '*.html'
             TargetOriginId: S3FrontendOrigin
             ViewerProtocolPolicy: redirect-to-https
@@ -307,7 +339,6 @@ Resources:
             CachedMethods:
               - GET
               - HEAD
-            # Managed-CachingDisabled (ID: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad)
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
           - PathPattern: 'f/*'
             TargetOriginId: S3FrontendOrigin
@@ -348,13 +379,22 @@ Outputs:
     Value: !Ref StorageBucket
 
   FrontendBucketName:
-    Description: Private S3 Bucket for Next.js frontend export
+    Description: S3 Bucket for Next.js frontend export
     Value: !Ref FrontendBucket
 
+  FrontendWebsiteUrl:
+    Description: Live website URL for DropBox-lite
+    Value: !If
+      - IsCloudFrontEnabled
+      - !Sub 'https://${CloudFrontDistribution.DomainName}'
+      - !GetAtt FrontendBucket.WebsiteURL
+
   CloudFrontDistributionId:
+    Condition: IsCloudFrontEnabled
     Description: CloudFront Distribution ID
     Value: !Ref CloudFrontDistribution
 
   CloudFrontDomainName:
+    Condition: IsCloudFrontEnabled
     Description: CloudFront Distribution Domain Name (HTTPS)
     Value: !GetAtt CloudFrontDistribution.DomainName

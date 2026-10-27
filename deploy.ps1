@@ -2,19 +2,23 @@
 .SYNOPSIS
   Automated deployment script for DropBox-lite (Serverless Ephemeral File Sharing).
   Deploys AWS SAM infrastructure, builds Next.js static frontend with deployed API URLs,
-  syncs to private S3 frontend bucket, and invalidates CloudFront cache.
+  syncs to S3 frontend bucket, and optionally invalidates CloudFront.
 
 .PARAMETER StackName
   CloudFormation / SAM stack name (default: dropwindow-serverless)
 
 .PARAMETER Region
   AWS Region to deploy into (default: ap-south-1)
+
+.PARAMETER EnableCloudFront
+  Enable CloudFront distribution (default: false, for immediate unverified account deploy).
 #>
 
 [CmdletBinding()]
 param (
     [string]$StackName = "dropwindow-serverless",
-    [string]$Region = "ap-south-1"
+    [string]$Region = "ap-south-1",
+    [string]$EnableCloudFront = "false"
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,11 +26,11 @@ $env:SAM_CLI_TELEMETRY = "0"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  DropBox-lite Deployment Automation (PowerShell)" -ForegroundColor Cyan
-Write-Host "  Region: $Region | Stack: $StackName" -ForegroundColor Cyan
+Write-Host "  Region: $Region | Stack: $StackName | CloudFront: $EnableCloudFront" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 1. Verify Prerequisites
-Write-Host "`n[1/6] Verifying CLI tools..." -ForegroundColor Yellow
+Write-Host "`n[1/6] Verifying CLI tools and AWS credentials..." -ForegroundColor Yellow
 
 # Ensure SAM CLI path is available if installed in standard location
 if (Test-Path "C:\Program Files\Amazon\AWSSAMCLI\bin") {
@@ -45,41 +49,33 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "AWS Identity verified successfully." -ForegroundColor Green
 
-$samAvailable = $null -ne (Get-Command sam -ErrorAction SilentlyContinue)
-if (-not $samAvailable) {
-    Write-Warning "'sam' CLI not found in PATH. Checking if CloudFormation package/deploy should be used..."
+# Check if a previous failed stack is in ROLLBACK_COMPLETE state and delete it
+$stackStatus = aws cloudformation describe-stacks --stack-name $StackName --region $Region --query "Stacks[0].StackStatus" --output text 2>$null
+if ($stackStatus -eq "ROLLBACK_COMPLETE") {
+    Write-Host "Cleaning up previous ROLLBACK_COMPLETE stack..." -ForegroundColor Yellow
+    aws cloudformation delete-stack --stack-name $StackName --region $Region
+    aws cloudformation wait stack-delete-complete --stack-name $StackName --region $Region
+    Write-Host "Cleanup complete." -ForegroundColor Green
 }
 
 # 2. Build Backend with SAM
 Write-Host "`n[2/6] Building backend infrastructure with SAM and esbuild..." -ForegroundColor Yellow
-if ($samAvailable) {
-    sam build --template template.yaml
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "SAM build failed."
-        exit 1
-    }
-} else {
-    Write-Host "Using CloudFormation direct packaging mode with template.yaml..." -ForegroundColor Yellow
+sam build --template template.yaml
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "SAM build failed."
+    exit 1
 }
 
 # 3. Deploy Stack with SAM
 Write-Host "`n[3/6] Deploying AWS infrastructure via SAM/CloudFormation..." -ForegroundColor Yellow
-if ($samAvailable) {
-    sam deploy `
-        --stack-name $StackName `
-        --resolve-s3 `
-        --capabilities CAPABILITY_IAM `
-        --region $Region `
-        --no-confirm-changeset `
-        --no-fail-on-empty-changeset
-} else {
-    aws cloudformation deploy `
-        --template-file template.yaml `
-        --stack-name $StackName `
-        --capabilities CAPABILITY_IAM `
-        --region $Region `
-        --no-fail-on-empty-changeset
-}
+sam deploy `
+    --stack-name $StackName `
+    --resolve-s3 `
+    --capabilities CAPABILITY_IAM `
+    --region $Region `
+    --parameter-overrides "EnableCloudFront=$EnableCloudFront" `
+    --no-confirm-changeset `
+    --no-fail-on-empty-changeset
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Deployment of CloudFormation stack failed."
@@ -103,15 +99,14 @@ $CreateUploadUrl = $outputs["CreateUploadFunctionUrl"]
 $GetFileUrl = $outputs["GetFileFunctionUrl"]
 $DeleteFileUrl = $outputs["DeleteFileFunctionUrl"]
 $FrontendBucket = $outputs["FrontendBucketName"]
+$FrontendUrl = $outputs["FrontendWebsiteUrl"]
 $CloudFrontId = $outputs["CloudFrontDistributionId"]
-$CloudFrontDomain = $outputs["CloudFrontDomainName"]
 
 Write-Host "CreateUpload URL : $CreateUploadUrl" -ForegroundColor Cyan
 Write-Host "GetFile URL      : $GetFileUrl" -ForegroundColor Cyan
 Write-Host "DeleteFile URL   : $DeleteFileUrl" -ForegroundColor Cyan
 Write-Host "Frontend Bucket  : $FrontendBucket" -ForegroundColor Cyan
-Write-Host "CloudFront ID    : $CloudFrontId" -ForegroundColor Cyan
-Write-Host "CloudFront Domain: https://$CloudFrontDomain" -ForegroundColor Green
+Write-Host "Live Website URL : $FrontendUrl" -ForegroundColor Green
 
 # 5. Build Next.js Static Export with Production API URLs
 Write-Host "`n[5/6] Building Next.js static frontend (output: export)..." -ForegroundColor Yellow
@@ -134,21 +129,23 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 6. Sync Static Export to Private S3 Frontend Bucket & Invalidate CloudFront
-Write-Host "`n[6/6] Syncing frontend to S3 and invalidating CloudFront..." -ForegroundColor Yellow
+# 6. Sync Static Export to S3 Frontend Bucket & Invalidate CloudFront if enabled
+Write-Host "`n[6/6] Syncing frontend to S3..." -ForegroundColor Yellow
 aws s3 sync frontend/out "s3://$FrontendBucket" --delete --region $Region
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to sync static files to S3 bucket $FrontendBucket."
     exit 1
 }
 
-Write-Host "Creating CloudFront cache invalidation..." -ForegroundColor Yellow
-aws cloudfront create-invalidation `
-    --distribution-id $CloudFrontId `
-    --paths "/*" `
-    --region $Region
+if ($EnableCloudFront -eq "true" -and $CloudFrontId) {
+    Write-Host "Creating CloudFront cache invalidation..." -ForegroundColor Yellow
+    aws cloudfront create-invalidation `
+        --distribution-id $CloudFrontId `
+        --paths "/*" `
+        --region $Region
+}
 
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host "  DEPLOYMENT COMPLETE!" -ForegroundColor Green
-Write-Host "  Live CloudFront URL: https://$CloudFrontDomain" -ForegroundColor Green
+Write-Host "  Live Website URL: $FrontendUrl" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
