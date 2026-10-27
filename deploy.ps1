@@ -26,6 +26,12 @@ Write-Host "==========================================================" -Foregro
 
 # 1. Verify Prerequisites
 Write-Host "`n[1/6] Verifying CLI tools..." -ForegroundColor Yellow
+
+# Ensure SAM CLI path is available if installed in standard location
+if (Test-Path "C:\Program Files\Amazon\AWSSAMCLI\bin") {
+    $env:PATH = "C:\Program Files\Amazon\AWSSAMCLI\bin;$env:PATH"
+}
+
 if (-not (Get-Command aws -ErrorAction SilentlyContinue)) {
     Write-Error "AWS CLI is required but not installed or not in PATH."
     exit 1
