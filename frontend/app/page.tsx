@@ -181,8 +181,35 @@ export default function UploadPage() {
   };
 
   const copyToClipboard = async (text: string, isToken: boolean) => {
-    try {
-      await navigator.clipboard.writeText(text);
+    let copied = false;
+    // 1. Modern Async Clipboard API (for HTTPS / localhost)
+    if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch (err) {
+        console.warn('navigator.clipboard failed:', err);
+      }
+    }
+    // 2. Fallback for HTTP (execCommand copy)
+    if (!copied && typeof document !== 'undefined') {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        textArea.setAttribute('readonly', '');
+        document.body.appendChild(textArea);
+        textArea.select();
+        textArea.setSelectionRange(0, 99999);
+        copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+    }
+    if (copied) {
       if (isToken) {
         setCopiedToken(true);
         setTimeout(() => setCopiedToken(false), 2000);
@@ -190,8 +217,6 @@ export default function UploadPage() {
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2000);
       }
-    } catch {
-      // Fallback
     }
   };
 
