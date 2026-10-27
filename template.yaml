@@ -363,15 +363,15 @@ Resources:
 Outputs:
   CreateUploadFunctionUrl:
     Description: Lambda Function URL for createUpload
-    Value: !GetAtt CreateUploadFunction.FunctionUrl
+    Value: !GetAtt CreateUploadFunctionUrl.FunctionUrl
 
   GetFileFunctionUrl:
     Description: Lambda Function URL for getFile
-    Value: !GetAtt GetFileFunction.FunctionUrl
+    Value: !GetAtt GetFileFunctionUrl.FunctionUrl
 
   DeleteFileFunctionUrl:
     Description: Lambda Function URL for deleteFile
-    Value: !GetAtt DeleteFileFunction.FunctionUrl
+    Value: !GetAtt DeleteFileFunctionUrl.FunctionUrl
 
   StorageBucketName:
     Description: Private S3 Bucket for file storage
