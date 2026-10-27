@@ -41,35 +41,27 @@ const ALLOWED_EXPIRY_SECONDS = {
   86400: 86400
 };
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Content-Type': 'application/json'
-};
-
+// Function URL automatically injects Access-Control-Allow-Origin headers when configured.
+// Do not duplicate Access-Control-Allow-Origin to avoid browser CORS rejection.
 function jsonResponse(statusCode, data) {
   return {
     statusCode,
-    headers: CORS_HEADERS,
+    headers: {
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify(data)
   };
 }
 
 function sanitizeFileName(rawName) {
   if (typeof rawName !== 'string') return '';
-  // Strip directory paths (both unix and windows)
   const base = rawName.split(/[/\\]/).pop() || '';
-  // Remove control characters (ASCII 0-31 and 127) and null bytes
   let clean = base.replace(/[\x00-\x1F\x7F]/g, '').trim();
-  // Strip characters that are invalid in Windows / standard filenames or dangerous in URLs
   clean = clean.replace(/[<>:"/\\|?*]/g, '_');
-  // Avoid leading/trailing dots or spaces
   clean = clean.replace(/^\.+/, '').replace(/\.+$/, '');
   if (!clean || clean === '.' || clean === '..') {
     return '';
   }
-  // Truncate to reasonable length (max 150 chars) while preserving extension
   if (clean.length > 150) {
     const ext = path.extname(clean);
     const stem = clean.slice(0, 150 - ext.length);
@@ -79,12 +71,13 @@ function sanitizeFileName(rawName) {
 }
 
 export const handler = async (event) => {
-  // Handle CORS preflight
   const method = (event.requestContext?.http?.method || event.httpMethod || '').toUpperCase();
   if (method === 'OPTIONS') {
     return {
       statusCode: 204,
-      headers: CORS_HEADERS,
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: ''
     };
   }

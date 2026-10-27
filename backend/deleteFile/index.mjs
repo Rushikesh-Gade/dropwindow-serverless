@@ -11,28 +11,26 @@ const s3Client = new S3Client({ region: REGION });
 const ddbRawClient = new DynamoDBClient({ region: REGION });
 const ddb = DynamoDBDocumentClient.from(ddbRawClient);
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Content-Type': 'application/json'
-};
-
+// Function URL automatically injects Access-Control-Allow-Origin headers when configured.
+// Do not duplicate Access-Control-Allow-Origin to avoid browser CORS rejection.
 function jsonResponse(statusCode, data) {
   return {
     statusCode,
-    headers: CORS_HEADERS,
+    headers: {
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify(data)
   };
 }
 
 export const handler = async (event) => {
-  // Handle CORS preflight
   const method = (event.requestContext?.http?.method || event.httpMethod || '').toUpperCase();
   if (method === 'OPTIONS') {
     return {
       statusCode: 204,
-      headers: CORS_HEADERS,
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: ''
     };
   }
