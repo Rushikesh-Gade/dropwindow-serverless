@@ -1,12 +1,12 @@
-# DropBox-lite: Architecture & Services Guide
+# DropWindow: Architecture & Services Guide
 
-> A comprehensive reference document detailing all cloud services, architecture diagrams, design decisions, and workflows for DropBox-lite.
+> A comprehensive reference document detailing all cloud services, architecture diagrams, design decisions, and workflows for DropWindow.
 
 ---
 
 ## 1. Executive Summary & Purpose
 
-DropBox-lite is a high-performance, serverless temporary file-sharing web application inspired by WeTransfer. It provides private, ephemeral file transfers with automatic time-to-live (TTL) expiration, direct browser-to-cloud uploads, and zero persistent infrastructure maintenance.
+DropWindow is a high-performance, serverless temporary file-sharing web application inspired by WeTransfer. It provides private, ephemeral file transfers with automatic time-to-live (TTL) expiration, direct browser-to-cloud uploads, and zero persistent infrastructure maintenance.
 
 The core architectural constraint is **100% pure serverless operation**: NO EC2 instances, NO ECS containers, NO always-on databases, and NO traditional backend servers. When the application is idle, resource utilization and operating costs are exactly **$0.00**.
 

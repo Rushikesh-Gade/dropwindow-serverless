@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Automated deployment script for DropBox-lite (Serverless Ephemeral File Sharing).
+  Automated deployment script for DropWindow (Serverless Ephemeral File Sharing).
   Deploys AWS SAM infrastructure, builds Next.js static frontend with deployed API URLs,
   syncs to S3 frontend bucket, and optionally invalidates CloudFront.
 
@@ -25,7 +25,7 @@ $ErrorActionPreference = "Stop"
 $env:SAM_CLI_TELEMETRY = "0"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "  DropBox-lite Deployment Automation (PowerShell)" -ForegroundColor Cyan
+Write-Host "  DropWindow Deployment Automation (PowerShell)" -ForegroundColor Cyan
 Write-Host "  Region: $Region | Stack: $StackName | CloudFront: $EnableCloudFront" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DropBox-lite | Serverless Ephemeral File Sharing',
+  title: 'DropWindow | Serverless Ephemeral File Sharing',
   description: 'Fast, anonymous, temporary file transfers that automatically self-destruct. Built 100% serverless on AWS.',
 };
 
@@ -34,7 +34,7 @@ export default function RootLayout({
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <span className="font-extrabold text-slate-900 tracking-tight text-lg leading-tight group-hover:text-sky-600 transition-colors">
-                    DropBox<span className="text-sky-600">-lite</span>
+                    Drop<span className="text-sky-600">Window</span>
                   </span>
                   <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200/60">
                     Ephemeral
@@ -71,7 +71,7 @@ export default function RootLayout({
           <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-slate-600">
               <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
-              <span>100% Serverless &bull; Ephemeral Files Auto-Purged via DynamoDB TTL & S3 Lifecycle</span>
+              <span>DropWindow &bull; Ephemeral Files Auto-Purged via DynamoDB TTL & S3 Lifecycle</span>
             </div>
             <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
               <span>AWS Lambda (arm64)</span>

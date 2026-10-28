@@ -1,4 +1,4 @@
-# DropBox-lite (Serverless Ephemeral File Sharing)
+# DropWindow (Serverless Ephemeral File Sharing)
 
 > A blazing-fast, temporary file sharing web application inspired by WeTransfer. Zero always-on servers, zero persistent storage bloat, and end-to-end serverless automation on AWS.
 

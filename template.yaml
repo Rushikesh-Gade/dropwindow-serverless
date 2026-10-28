@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  DropBox-lite: Serverless temporary file sharing system.
+  DropWindow: Serverless temporary file sharing system.
   Next.js Static Export, Lambda Function URLs, S3, DynamoDB, CloudFront with OAC (optional).
 
 Parameters:
@@ -295,7 +295,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: 'CloudFront CDN for DropBox-lite static frontend'
+        Comment: 'CloudFront CDN for DropWindow static frontend'
         DefaultRootObject: index.html
         HttpVersion: http2and3
         Origins:
@@ -382,7 +382,7 @@ Outputs:
     Value: !Ref FrontendBucket
 
   FrontendWebsiteUrl:
-    Description: Live website URL for DropBox-lite
+    Description: Live website URL for DropWindow
     Value: !If
       - IsCloudFrontEnabled
       - !Sub 'https://${CloudFrontDistribution.DomainName}'

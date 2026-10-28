@@ -52,10 +52,10 @@ function addBullet(label, text) {
 }
 
 // ================= PAGE 1 =================
-addHeader('DropBox-lite: Architecture & Services Guide', 'Comprehensive Breakdown of Serverless Cloud Services, Architecture & Design Decisions');
+addHeader('DropWindow: Architecture & Services Guide', 'Comprehensive Breakdown of Serverless Cloud Services, Architecture & Design Decisions');
 
 addSectionTitle('1. Executive Summary & Purpose');
-addParagraph('DropBox-lite is a high-performance, serverless temporary file-sharing web application inspired by WeTransfer. It provides private, ephemeral file transfers with automatic time-to-live (TTL) expiration, direct browser-to-cloud uploads, and zero persistent infrastructure maintenance.');
+addParagraph('DropWindow is a high-performance, serverless temporary file-sharing web application inspired by WeTransfer. It provides private, ephemeral file transfers with automatic time-to-live (TTL) expiration, direct browser-to-cloud uploads, and zero persistent infrastructure maintenance.');
 addParagraph('The core architectural constraint is 100% pure serverless operation: NO EC2 instances, NO ECS containers, NO always-on databases, and NO traditional backend servers. When the application is idle, resource utilization and operating costs are exactly $0.00.');
 
 addSectionTitle('2. End-to-End System Architecture Diagram');
