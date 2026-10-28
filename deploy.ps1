@@ -130,11 +130,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 6. Sync Static Export to S3 Frontend Bucket & Invalidate CloudFront if enabled
-Write-Host "`n[6/6] Syncing frontend to S3..." -ForegroundColor Yellow
-aws s3 sync frontend/out "s3://$FrontendBucket" --delete --region $Region
+Write-Host "`n[6/6] Syncing frontend to S3 with cache optimization..." -ForegroundColor Yellow
+aws s3 sync frontend/out "s3://$FrontendBucket" --delete --region $Region --cache-control "public, max-age=0, must-revalidate"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to sync static files to S3 bucket $FrontendBucket."
     exit 1
+}
+
+if (Test-Path "frontend/out/_next") {
+    aws s3 sync frontend/out/_next "s3://$FrontendBucket/_next" --region $Region --cache-control "public, max-age=31536000, immutable"
 }
 
 if ($EnableCloudFront -eq "true" -and $CloudFrontId) {
