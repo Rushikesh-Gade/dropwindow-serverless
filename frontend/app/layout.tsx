@@ -43,7 +43,7 @@ export default function RootLayout({
         <footer className="w-full border-t border-slate-200 bg-white/50 py-6 text-center text-xs text-slate-500">
           <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p>DropBox-lite &bull; Ephemeral Files Automatically Expire via AWS DynamoDB TTL</p>
-            <p className="text-slate-400">AWS Lambda &bull; S3 &bull; CloudFront OAC</p>
+            <p className="text-slate-400">AWS Lambda &bull; Amazon S3 &bull; DynamoDB</p>
           </div>
         </footer>
       </body>
